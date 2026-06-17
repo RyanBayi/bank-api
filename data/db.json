@@ -1,0 +1,98 @@
+{
+  "clients": [
+    {
+      "id": "ad975066-c098-4200-b254-50e17d7dd7cb",
+      "firstName": "Henri",
+      "lastName": "Bayi",
+      "address": "Chapelle Obilie",
+      "phone": "698650180",
+      "email": "bayiyoumbi@gmail.com",
+      "identityNumber": "b67",
+      "photo": "",
+      "kycStatus": "PENDING",
+      "archived": false,
+      "createdAt": "2026-06-17T04:21:59.574Z",
+      "updatedAt": "2026-06-17T04:21:59.574Z"
+    },
+    {
+      "id": "d20a1340-6b9e-430c-92bd-347a30b1f5f3",
+      "firstName": "Ryan",
+      "lastName": "Youmbi",
+      "address": "Chapelle Obilie",
+      "phone": "699393199",
+      "email": "bayiyoumbi.hervan@ictuniversity.edu.cm",
+      "identityNumber": "b68",
+      "photo": "",
+      "kycStatus": "VERIFIED",
+      "archived": false,
+      "createdAt": "2026-06-17T04:34:23.250Z",
+      "updatedAt": "2026-06-17T05:07:49.849Z"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "a5d62e23-cfe8-4249-9a08-7413e6fc8dcf",
+      "clientId": "ad975066-c098-4200-b254-50e17d7dd7cb",
+      "ownerName": "Henri Bayi",
+      "accountNumber": "ALT-379204-6305",
+      "type": "CURRENT",
+      "status": "ACTIVE",
+      "balanceCents": 4000000,
+      "openedAt": "2026-06-17T04:26:19.204Z",
+      "createdAt": "2026-06-17T04:26:19.204Z"
+    },
+    {
+      "id": "abe8b64b-2499-4273-b9f7-9266a8d40927",
+      "clientId": "d20a1340-6b9e-430c-92bd-347a30b1f5f3",
+      "ownerName": "Ryan Youmbi",
+      "accountNumber": "ALT-883014-1072",
+      "type": "CURRENT",
+      "status": "ACTIVE",
+      "balanceCents": 1500000,
+      "openedAt": "2026-06-17T04:34:43.014Z",
+      "createdAt": "2026-06-17T04:34:43.014Z"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "3f7c47ac-6357-492b-9644-da1288058eaa",
+      "receiptNumber": "REC-20260617-664759",
+      "accountId": "a5d62e23-cfe8-4249-9a08-7413e6fc8dcf",
+      "type": "DEPOSIT",
+      "amountCents": 1000000,
+      "balanceAfterCents": 1000000,
+      "createdAt": "2026-06-17T04:26:19.204Z",
+      "description": "Dépôt initial à l'ouverture du compte"
+    },
+    {
+      "id": "79f50f4d-2d07-4eae-bb70-d26440ce44df",
+      "receiptNumber": "REC-20260617-521358",
+      "accountId": "abe8b64b-2499-4273-b9f7-9266a8d40927",
+      "type": "DEPOSIT",
+      "amountCents": 1500000,
+      "balanceAfterCents": 1500000,
+      "createdAt": "2026-06-17T04:34:43.014Z",
+      "description": "Dépôt initial à l'ouverture du compte"
+    },
+    {
+      "id": "c12bfd34-c7a8-439c-833b-8d9413eaae9a",
+      "receiptNumber": "REC-20260617-728489",
+      "accountId": "a5d62e23-cfe8-4249-9a08-7413e6fc8dcf",
+      "type": "DEPOSIT",
+      "amountCents": 2000000,
+      "balanceAfterCents": 3000000,
+      "createdAt": "2026-06-17T04:36:19.442Z",
+      "description": "Versement gichet"
+    },
+    {
+      "id": "b6e8f6ed-768d-44e3-805a-94dd8f261804",
+      "receiptNumber": "REC-20260617-228171",
+      "accountId": "a5d62e23-cfe8-4249-9a08-7413e6fc8dcf",
+      "type": "DEPOSIT",
+      "amountCents": 1000000,
+      "balanceAfterCents": 4000000,
+      "createdAt": "2026-06-17T04:48:59.933Z",
+      "description": "Versement gichet"
+    }
+  ]
+}

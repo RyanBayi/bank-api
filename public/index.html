@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Altas</title>
+    <link rel="stylesheet" href="/app/styles.css" />
+    <style>
+      /* Styles pour l'affichage du reçu à l'écran */
+      .receiptBox.print-document {
+        background: #fff;
+        color: #1a1a1a;
+        padding: 2.5rem;
+        border: 1px solid #eee;
+        font-family: 'Courier New', Courier, monospace;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        width: 400px;
+        min-height: 400px;
+        margin: 1rem auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .receipt-header { text-align: center; border-bottom: 2px dashed #1a1a1a; margin-bottom: 1rem; padding-bottom: 0.5rem; }
+      .bank-brand { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 0.1rem; }
+      .receipt-type { font-size: 0.75rem; text-transform: uppercase; color: #666; letter-spacing: 1px; font-weight: bold; }
+      .receipt-section { margin-bottom: 0.8rem; line-height: 1.2; }
+      .receipt-section h3 { font-size: 0.7rem; text-transform: uppercase; color: #333; border-bottom: 1px solid #eee; margin-bottom: 0.4rem; padding-bottom: 0.1rem; }
+      .receipt-section p { margin: 0.2rem 0; font-size: 0.85rem; display: flex; justify-content: space-between; }
+      .receipt-section p span { color: #555; font-size: 0.8rem; }
+      .receipt-amount-box { background: #f9f9f9; padding: 1rem; border: 1px solid #1a1a1a; margin-top: 0.5rem; }
+      .amount-line { display: flex; justify-content: space-between; margin-bottom: 0.6rem; }
+      .amount-line.total { border-top: 1px dashed #1a1a1a; padding-top: 0.5rem; margin-top: 0.5rem; font-weight: bold; font-size: 1.1rem; }
+      .receipt-footer { text-align: center; font-size: 0.65rem; color: #777; margin-top: 1rem; border-top: 1px solid #eee; padding-top: 0.5rem; }
+
+      /* Configuration Impression / PDF : On cache tout sauf le reçu */
+      @media print {
+        @page { margin: 1cm; }
+        body * { visibility: hidden; background: white !important; }
+        .receiptBox.print-document, .receiptBox.print-document * { visibility: visible; }
+        .receiptBox.print-document {
+          position: absolute;
+          left: 0; top: 0; width: 100%;
+          border: none; box-shadow: none; padding: 0; margin: 0;
+        }
+        .ghostButton { display: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Application de gestion bancaire</p>
+        <h1>Altas</h1>
+      </div>
+      <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
+        <span class="themeIcon" aria-hidden="true">☾</span>
+        <span id="themeToggleLabel">Mode nuit</span>
+      </button>
+    </header>
+
+    <main class="layout">
+      <section class="stats" aria-label="Résumé">
+        <article class="stat">
+          <span>Clients</span>
+          <strong id="clientCount">0</strong>
+        </article>
+        <article class="stat">
+          <span>Comptes actifs</span>
+          <strong id="accountCount">0</strong>
+        </article>
+        <article class="stat">
+          <span>Solde total</span>
+          <strong id="totalBalance">0 FCFA</strong>
+        </article>
+        <article class="stat">
+          <span>Transactions</span>
+          <strong id="transactionCount">0</strong>
+        </article>
+      </section>
+
+      <section class="tabs" aria-label="Sections">
+        <button class="tabButton active" data-tab="clients" type="button">Clients</button>
+        <button class="tabButton" data-tab="accounts" type="button">Comptes</button>
+        <button class="tabButton" data-tab="operations" type="button">Opérations</button>
+        <button class="tabButton" data-tab="history" type="button">Historique</button>
+      </section>
+
+      <section id="clientsTab" class="tabPanel active">
+        <div class="workbench twoColumns">
+          <div class="panel">
+            <div class="panelHeader">
+              <h2 id="clientFormTitle">Nouveau client</h2>
+              <button id="resetClientForm" class="ghostButton" type="button">Nouveau</button>
+            </div>
+            <form id="clientForm" class="form">
+              <input name="clientId" type="hidden" />
+              <div class="formGrid">
+                <label>Nom <input name="lastName" autocomplete="family-name" required /></label>
+                <label>Prénom <input name="firstName" autocomplete="given-name" required /></label>
+                <label>Téléphone <input name="phone" autocomplete="tel" /></label>
+                <label>Email <input name="email" autocomplete="email" inputmode="email" /></label>
+                <label>Numéro pièce <input name="identityNumber" /></label>
+                <label>Photo URL <input name="photo" placeholder="https://..." /></label>
+              </div>
+              <label>Adresse <input name="address" autocomplete="street-address" /></label>
+              <label>
+                Vérification KYC
+                <select name="kycStatus">
+                  <option value="PENDING">En attente</option>
+                  <option value="VERIFIED">Vérifié</option>
+                  <option value="REJECTED">Rejeté</option>
+                </select>
+              </label>
+              <button type="submit">Enregistrer client</button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Recherche clients</h2>
+              <button id="refreshButton" class="ghostButton" type="button">Actualiser</button>
+            </div>
+            <form id="clientSearchForm" class="form inlineForm">
+              <input name="q" placeholder="Nom, téléphone, email, pièce..." />
+              <button type="submit">Rechercher</button>
+            </form>
+            <div id="clientsList" class="clientsList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="accountsTab" class="tabPanel">
+        <div class="workbench twoColumns">
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Ouverture de compte</h2>
+            </div>
+            <form id="accountForm" class="form">
+              <label>Client <select name="clientId" required></select></label>
+              <label>
+                Type de compte
+                <select name="type" required>
+                  <option value="CURRENT">Compte courant</option>
+                  <option value="SAVINGS">Compte épargne</option>
+                  <option value="BUSINESS">Compte entreprise</option>
+                  <option value="JOINT">Compte joint</option>
+                </select>
+              </label>
+              <label>Dépôt initial <input name="initialDeposit" inputmode="decimal" placeholder="0" /></label>
+              <button type="submit">Ouvrir le compte</button>
+            </form>
+          </div>
+
+          <div class="panel accountsPanel">
+            <div class="panelHeader">
+              <h2>Comptes bancaires</h2>
+            </div>
+            <div id="accountsList" class="accountsList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="operationsTab" class="tabPanel">
+        <div class="workbench">
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Dépôt / retrait</h2>
+            </div>
+            <form id="operationForm" class="form">
+              <label>
+                Compte
+                <input type="search" id="operationAccountSearch" class="formSearch" placeholder="🔍 Rechercher un compte..." />
+                <select name="accountId" required></select>
+              </label>
+              <div class="segmented" role="radiogroup" aria-label="Type d'opération">
+                <label><input type="radio" name="operationType" value="deposit" checked /> Dépôt</label>
+                <label><input type="radio" name="operationType" value="withdraw" /> Retrait</label>
+              </div>
+              <label>Montant <input name="amount" inputmode="decimal" placeholder="25000" required /></label>
+              <label>Libellé <input name="description" placeholder="Ex: versement guichet" /></label>
+              <button type="submit">Valider</button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Transfert</h2>
+            </div>
+            <form id="transferForm" class="form">
+              <label>
+                Depuis
+                <input type="search" id="transferFromSearch" class="formSearch" placeholder="🔍 Rechercher..." />
+                <select name="fromAccountId" required></select>
+              </label>
+              <label>
+                Destination
+                <select name="transferType" id="transferType">
+                  <option value="INTERNAL">Même banque</option>
+                  <option value="EXTERNAL_BANK">Autre banque</option>
+                  <option value="PAYMENT_GATEWAY">Passerelle paiement</option>
+                </select>
+              </label>
+              <label class="internalOnly">
+                Vers
+                <input type="search" id="transferToSearch" class="formSearch" placeholder="🔍 Rechercher..." />
+                <select name="toAccountId"></select>
+              </label>
+              <label class="externalOnly">Bénéficiaire <input name="beneficiaryName" /></label>
+              <label class="externalOnly bankOnly">Banque destinataire <input name="destinationBank" /></label>
+              <label class="externalOnly gatewayOnly">Passerelle <input name="gatewayName" placeholder="Mobile Money, carte..." /></label>
+              <label class="externalOnly gatewayOnly">Référence <input name="gatewayReference" /></label>
+              <label>Montant <input name="amount" inputmode="decimal" placeholder="10000" required /></label>
+              <label>Motif <input name="description" maxlength="140" placeholder="Facultatif" /></label>
+              <button type="submit">Envoyer</button>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Reçu</h2>
+              <button id="printReceiptButton" class="ghostButton" type="button">Imprimer</button>
+            </div>
+            <div id="receiptBox" class="receiptBox emptyState">Aucune opération récente.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="historyTab" class="tabPanel">
+        <div class="contentGrid">
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Historique</h2>
+            </div>
+            <div id="transactionsList" class="transactionsList"></div>
+          </div>
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Contrôles disponibles</h2>
+            </div>
+            <div class="featureList">
+              <p>Clients, KYC, archivage, comptes multiples, dépôts, retraits, reçus, transferts internes, externes et passerelles.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app/app.js" defer></script>
+  </body>
+</html>

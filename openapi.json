@@ -1,0 +1,187 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Altas",
+    "version": "2.0.0",
+    "description": "API REST pour clients, KYC, comptes bancaires, dépôts, retraits, reçus et transferts."
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/api/summary": {
+      "get": { "summary": "Résumé global", "responses": { "200": { "description": "Résumé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Summary" } } } } } }
+    },
+    "/api/clients": {
+      "get": {
+        "summary": "Rechercher/lister les clients",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "includeArchived", "in": "query", "schema": { "type": "boolean" } }
+        ],
+        "responses": { "200": { "description": "Clients", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Client" } } } } } }
+      },
+      "post": {
+        "summary": "Créer un client",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClientInput" } } } },
+        "responses": { "201": { "description": "Client créé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } } }
+      }
+    },
+    "/api/clients/{id}": {
+      "get": { "summary": "Consulter un client", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Client", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } } } },
+      "put": { "summary": "Modifier un client", "parameters": [{ "$ref": "#/components/parameters/Id" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClientInput" } } } }, "responses": { "200": { "description": "Client modifié" } } },
+      "delete": { "summary": "Supprimer un client sans compte actif", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "204": { "description": "Supprimé" } } }
+    },
+    "/api/clients/{id}/archive": {
+      "post": { "summary": "Archiver un client", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Client archivé" } } }
+    },
+    "/api/clients/{id}/accounts": {
+      "get": { "summary": "Comptes d'un client", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Comptes", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } } } } } } }
+    },
+    "/api/accounts": {
+      "get": { "summary": "Lister les comptes", "responses": { "200": { "description": "Comptes", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Account" } } } } } } },
+      "post": { "summary": "Ouvrir un compte", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAccountRequest" } } } }, "responses": { "201": { "description": "Compte ouvert" } } }
+    },
+    "/api/accounts/{id}": {
+      "get": { "summary": "Consulter un compte", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Compte" } } },
+      "delete": { "summary": "Supprimer un compte à solde nul", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "204": { "description": "Supprimé" } } }
+    },
+    "/api/accounts/{id}/close": {
+      "post": { "summary": "Fermer un compte à solde nul", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Compte fermé" } } }
+    },
+    "/api/accounts/{id}/deposit": {
+      "post": { "summary": "Dépôt avec reçu", "parameters": [{ "$ref": "#/components/parameters/Id" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MoneyOperationRequest" } } } }, "responses": { "200": { "description": "Dépôt effectué", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationResponse" } } } } } }
+    },
+    "/api/accounts/{id}/withdraw": {
+      "post": { "summary": "Retrait avec reçu", "parameters": [{ "$ref": "#/components/parameters/Id" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MoneyOperationRequest" } } } }, "responses": { "200": { "description": "Retrait effectué" }, "409": { "description": "Fonds insuffisants" } } }
+    },
+    "/api/transfers": {
+      "post": { "summary": "Transfert interne, externe ou passerelle", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferRequest" } } } }, "responses": { "201": { "description": "Transfert effectué" }, "409": { "description": "Fonds insuffisants" } } }
+    },
+    "/api/transactions": {
+      "get": { "summary": "Historique récent", "responses": { "200": { "description": "Transactions", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } } } } } } }
+    },
+    "/api/receipts/{id}": {
+      "get": { "summary": "Consulter un reçu", "parameters": [{ "$ref": "#/components/parameters/Id" }], "responses": { "200": { "description": "Reçu", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Receipt" } } } } } }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Id": { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "schemas": {
+      "Client": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "fullName": { "type": "string" },
+          "address": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string" },
+          "identityNumber": { "type": "string" },
+          "photo": { "type": "string" },
+          "kycStatus": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED"] },
+          "archived": { "type": "boolean" }
+        }
+      },
+      "ClientInput": {
+        "type": "object",
+        "required": ["firstName", "lastName"],
+        "properties": {
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "address": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string" },
+          "identityNumber": { "type": "string" },
+          "photo": { "type": "string" },
+          "kycStatus": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED"] }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "clientId": { "type": "string" },
+          "clientName": { "type": "string" },
+          "accountNumber": { "type": "string" },
+          "type": { "type": "string", "enum": ["CURRENT", "SAVINGS", "BUSINESS", "JOINT"] },
+          "status": { "type": "string", "enum": ["ACTIVE", "CLOSED"] },
+          "balance": { "type": "number" }
+        }
+      },
+      "CreateAccountRequest": {
+        "type": "object",
+        "required": ["clientId"],
+        "properties": {
+          "clientId": { "type": "string" },
+          "type": { "type": "string", "enum": ["CURRENT", "SAVINGS", "BUSINESS", "JOINT"] },
+          "initialDeposit": { "type": "number", "minimum": 0 }
+        }
+      },
+      "MoneyOperationRequest": {
+        "type": "object",
+        "required": ["amount"],
+        "properties": {
+          "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "description": { "type": "string" }
+        }
+      },
+      "TransferRequest": {
+        "type": "object",
+        "required": ["fromAccountId", "amount"],
+        "properties": {
+          "fromAccountId": { "type": "string" },
+          "toAccountId": { "type": "string" },
+          "transferType": { "type": "string", "enum": ["INTERNAL", "EXTERNAL_BANK", "PAYMENT_GATEWAY"] },
+          "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "beneficiaryName": { "type": "string" },
+          "destinationBank": { "type": "string" },
+          "gatewayName": { "type": "string" },
+          "gatewayReference": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "receiptNumber": { "type": "string" },
+          "accountId": { "type": "string" },
+          "type": { "type": "string" },
+          "amount": { "type": "number" },
+          "balanceAfter": { "type": "number" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Receipt": {
+        "type": "object",
+        "properties": {
+          "receiptNumber": { "type": "string" },
+          "transaction": { "$ref": "#/components/schemas/Transaction" },
+          "account": { "$ref": "#/components/schemas/Account" },
+          "client": { "$ref": "#/components/schemas/Client" }
+        }
+      },
+      "OperationResponse": {
+        "type": "object",
+        "properties": {
+          "account": { "$ref": "#/components/schemas/Account" },
+          "transaction": { "$ref": "#/components/schemas/Transaction" },
+          "receipt": { "$ref": "#/components/schemas/Receipt" }
+        }
+      },
+      "Summary": {
+        "type": "object",
+        "properties": {
+          "clientCount": { "type": "integer" },
+          "archivedClientCount": { "type": "integer" },
+          "accountCount": { "type": "integer" },
+          "closedAccountCount": { "type": "integer" },
+          "transactionCount": { "type": "integer" },
+          "totalBalance": { "type": "number" }
+        }
+      }
+    }
+  }
+}

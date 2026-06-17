@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ict304-gestion-banque-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.5
+      - key: HOST
+        value: 0.0.0.0
