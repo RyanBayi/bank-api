@@ -122,6 +122,108 @@ describe("Bank Store Logic", () => {
     assert.strictEqual(archived.archived, true);
 
     await store.deleteClient(client.id);
-    expect(() => store.getClientById(client.id)).toThrow();
+    await expect(store.getClientById(client.id)).rejects.toThrow();
+  });
+
+  test("met à jour les informations d'un client", async () => {
+    const store = await freshStore();
+    const client = await store.createClient({ firstName: "Jean", lastName: "Bono" });
+    const updated = await store.updateClient(client.id, { firstName: "Jacques", email: "jacques@bono.com" });
+    assert.equal(updated.firstName, "Jacques");
+    assert.equal(updated.email, "jacques@bono.com");
+  });
+
+  test("liste et recherche des clients", async () => {
+    const store = await freshStore();
+    await store.createClient({ firstName: "Alice", lastName: "Z" });
+    await store.createClient({ firstName: "Bob", lastName: "Y" });
+    
+    const all = await store.listClients();
+    assert.equal(all.length, 2);
+    
+    const search = await store.listClients({ q: "Alice" });
+    assert.equal(search.length, 1);
+    assert.equal(search[0].firstName, "Alice");
+  });
+
+  test("effectue un dépôt et un retrait", async () => {
+    const store = await freshStore();
+    const account = await store.createAccount({ ownerName: "Alice", initialDeposit: 100 });
+    
+    const dep = await store.deposit(account.id, 50, "Cadeau");
+    assert.equal(dep.account.balance, 150);
+    
+    const wit = await store.withdraw(account.id, 30, "Courses");
+    assert.equal(wit.account.balance, 120);
+  });
+
+  test("gère la fermeture et suppression de compte", async () => {
+    const store = await freshStore();
+    const account = await store.createAccount({ ownerName: "Alice", initialDeposit: 0 });
+    
+    await store.closeAccount(account.id);
+    const closed = await store.getAccountById(account.id);
+    assert.equal(closed.status, "CLOSED");
+    
+    await store.deleteAccount(account.id);
+    await expect(store.getAccountById(account.id)).rejects.toThrow();
+  });
+
+  test("récupère un reçu par numéro de reçu", async () => {
+    const store = await freshStore();
+    const account = await store.createAccount({ ownerName: "Alice", initialDeposit: 100 });
+    const txs = await store.listTransactions({ accountId: account.id });
+    const receipt = await store.getReceiptByTransactionId(txs[0].receiptNumber);
+    assert.equal(receipt.transaction.receiptNumber, txs[0].receiptNumber);
+  });
+
+  test("valide les contraintes de sécurité et formats", async () => {
+    const store = await freshStore();
+    
+    // Test format monétaire invalide
+    await expect(store.createAccount({ ownerName: "A", initialDeposit: "abc" }))
+      .rejects.toThrow("initialDeposit doit être un nombre");
+    
+    // Test email invalide
+    await expect(store.createClient({ firstName: "A", lastName: "B", email: "pas-un-email" }))
+      .rejects.toThrow("email invalide");
+    
+    // Test KYC invalide lors d'une mise à jour
+    const client = await store.createClient({ firstName: "A", lastName: "B" });
+    await expect(store.updateClient(client.id, { kycStatus: "INVALID" }))
+      .rejects.toThrow("kycStatus invalide");
+  });
+  
+  test("empêche les opérations sur comptes fermés ou clients archivés", async () => {
+    const store = await freshStore();
+    const client = await store.createClient({ firstName: "A", lastName: "B" });
+    const account = await store.createAccount({ clientId: client.id, initialDeposit: 100 });
+    
+    // Empêcher l'ouverture de compte pour un client archivé
+    await store.archiveClient(client.id);
+    await expect(store.createAccount({ clientId: client.id }))
+      .rejects.toThrow("Impossible d'ouvrir un compte pour un client archivé");
+
+    // Empêcher l'ouverture de plusieurs comptes actifs
+    const client2 = await store.createClient({ firstName: "B", lastName: "C" });
+    await store.createAccount({ clientId: client2.id });
+    await expect(store.createAccount({ clientId: client2.id }))
+      .rejects.toThrow("Ce client possède déjà un compte actif");
+
+    // Empêcher dépôt sur compte fermé
+    await store.withdraw(account.id, 100);
+    await store.closeAccount(account.id);
+    await expect(store.deposit(account.id, 50)).rejects.toThrow("Compte fermé");
+  });
+
+  test("couvre les filtres de listing et limites", async () => {
+    const store = await freshStore();
+    const alice = await store.createAccount({ ownerName: "Alice", initialDeposit: 100 });
+    
+    const accounts = await store.listAccounts({ clientId: alice.clientId });
+    assert.equal(accounts.length, 1);
+
+    const txs = await store.listTransactions({ accountId: alice.id, limit: 10 });
+    assert.equal(txs.length, 1);
   });
 });

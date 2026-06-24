@@ -1,8 +1,9 @@
-const fs = require("fs/promises");
 const path = require("path");
+const sqlite3 = require("sqlite3");
+const { open } = require("sqlite");
 const { randomUUID } = require("crypto");
 
-const DEFAULT_DATA_DIR = path.join(process.cwd(), "data");
+const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
 const FALLBACK_DATA_DIR = path.join(process.env.TMPDIR || "/tmp", "ict304-gestion-banque-api");
 const ACCOUNT_TYPES = new Set(["CURRENT", "SAVINGS", "BUSINESS", "JOINT"]);
 const TRANSFER_TYPES = new Set(["INTERNAL", "EXTERNAL_BANK", "PAYMENT_GATEWAY"]);
@@ -35,85 +36,61 @@ class InsufficientFundsError extends Error {
   }
 }
 
-let db = { clients: [], accounts: [], transactions: [] };
-let saveChain = Promise.resolve();
-
-async function ensureDbFile() {
-  const attempts = [];
-  if (process.env.DB_FILE) {
-    attempts.push({ dataDir: path.dirname(dbFile), dbFile });
-  } else {
-    attempts.push({ dataDir, dbFile });
-    if (!process.env.DATA_DIR) {
-      attempts.push({ dataDir: FALLBACK_DATA_DIR, dbFile: path.join(FALLBACK_DATA_DIR, "db.json") });
-    }
-  }
-
-  let lastErr;
-  for (const attempt of attempts) {
-    try {
-      await fs.mkdir(attempt.dataDir, { recursive: true });
-      try {
-        await fs.access(attempt.dbFile);
-      } catch {
-        await fs.writeFile(attempt.dbFile, JSON.stringify(db, null, 2), "utf8");
-      }
-      dataDir = attempt.dataDir;
-      dbFile = attempt.dbFile;
-      return;
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw lastErr;
-}
+let db;
 
 async function loadDb() {
-  await ensureDbFile();
-  const raw = await fs.readFile(dbFile, "utf8");
-  const parsed = JSON.parse(raw || "{}");
-  db = normalizeDb(parsed);
-}
+  db = await open({
+    filename: dbFile.endsWith(".json") ? dbFile.replace(".json", ".db") : dbFile,
+    driver: sqlite3.Database
+  });
 
-function normalizeDb(parsed) {
-  const next = {
-    clients: Array.isArray(parsed.clients) ? parsed.clients : [],
-    accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
-    transactions: Array.isArray(parsed.transactions) ? parsed.transactions : []
-  };
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS clients (
+      id TEXT PRIMARY KEY,
+      firstName TEXT,
+      lastName TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      identityNumber TEXT,
+      photo TEXT,
+      kycStatus TEXT,
+      archived INTEGER,
+      createdAt TEXT,
+      updatedAt TEXT
+    );
 
-  for (const account of next.accounts) {
-    if (!account.clientId) {
-      const legacyName = String(account.ownerName || "Client historique").trim();
-      const client = createClientRecord({
-        firstName: legacyName.split(/\s+/u).slice(0, -1).join(" ") || legacyName,
-        lastName: legacyName.split(/\s+/u).slice(-1).join(" ") || "Historique",
-        address: "",
-        phone: "",
-        email: "",
-        identityNumber: "",
-        photo: "",
-        kycStatus: "PENDING"
-      });
-      next.clients.push(client);
-      account.clientId = client.id;
-    }
-    account.type = ACCOUNT_TYPES.has(account.type) ? account.type : "CURRENT";
-    account.status = account.status || "ACTIVE";
-    account.accountNumber = account.accountNumber || generateAccountNumber();
-    account.openedAt = account.openedAt || account.createdAt || new Date().toISOString();
-  }
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      clientId TEXT,
+      ownerName TEXT,
+      accountNumber TEXT,
+      type TEXT,
+      status TEXT,
+      balanceCents INTEGER,
+      openedAt TEXT,
+      createdAt TEXT,
+      FOREIGN KEY(clientId) REFERENCES clients(id)
+    );
 
-  return next;
-}
-
-function persistDb() {
-  saveChain = saveChain
-    .then(() => fs.writeFile(dbFile, JSON.stringify(db, null, 2), "utf8"))
-    .catch((err) => {
-      console.error("Erreur lors de la sauvegarde db.json:", err);
-    });
-  return saveChain;
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      receiptNumber TEXT,
+      accountId TEXT,
+      relatedAccountId TEXT,
+      type TEXT,
+      transferType TEXT,
+      amountCents INTEGER,
+      balanceAfterCents INTEGER,
+      createdAt TEXT,
+      description TEXT,
+      destinationBank TEXT,
+      beneficiaryName TEXT,
+      gatewayName TEXT,
+      gatewayReference TEXT,
+      FOREIGN KEY(accountId) REFERENCES accounts(id)
+    );
+  `);
 }
 
 function parseMoneyToCents(value, { allowZero = false, fieldName = "amount" } = {}) {
@@ -170,7 +147,8 @@ function createClientRecord(payload) {
   };
 }
 
-function clientToResponse(client) {
+async function clientToResponse(client) {
+  const accountCount = (await db.get("SELECT COUNT(*) as count FROM accounts WHERE clientId = ? AND status != 'CLOSED'", [client.id])).count;
   return {
     id: client.id,
     firstName: client.firstName,
@@ -183,14 +161,14 @@ function clientToResponse(client) {
     photo: client.photo,
     kycStatus: client.kycStatus,
     archived: Boolean(client.archived),
-    accountCount: db.accounts.filter((account) => account.clientId === client.id && account.status !== "CLOSED").length,
+    accountCount,
     createdAt: client.createdAt,
     updatedAt: client.updatedAt
   };
 }
 
-function accountToResponse(account) {
-  const client = db.clients.find((item) => item.id === account.clientId);
+async function accountToResponse(account) {
+  const client = await db.get("SELECT * FROM clients WHERE id = ?", [account.clientId]);
   return {
     id: account.id,
     clientId: account.clientId,
@@ -225,9 +203,9 @@ function transactionToResponse(transaction) {
   };
 }
 
-function receiptToResponse(transaction) {
-  const account = getAccountById(transaction.accountId);
-  const client = getClientById(account.clientId);
+async function receiptToResponse(transaction) {
+  const account = await getAccountById(transaction.accountId);
+  const client = await getClientById(account.clientId);
   return {
     receiptNumber: transaction.receiptNumber,
     transaction: transactionToResponse(transaction),
@@ -237,34 +215,33 @@ function receiptToResponse(transaction) {
   };
 }
 
-function findClientIndexById(id) {
-  return db.clients.findIndex((client) => client.id === id);
+async function getClientById(id) {
+  const client = await db.get("SELECT * FROM clients WHERE id = ?", [id]);
+  if (!client) throw new NotFoundError("Client introuvable");
+  return client;
 }
 
-function getClientById(id) {
-  const idx = findClientIndexById(id);
-  if (idx === -1) throw new NotFoundError("Client introuvable");
-  return db.clients[idx];
+async function getClientByEmail(email) {
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  const client = await db.get("SELECT * FROM clients WHERE LOWER(email) = ? AND archived = 0", [cleanEmail]);
+  if (!client) throw new NotFoundError("Client introuvable ou archivé");
+  return client;
 }
 
-function findAccountIndexById(id) {
-  return db.accounts.findIndex((account) => account.id === id);
-}
-
-function getAccountById(id) {
-  const idx = findAccountIndexById(id);
-  if (idx === -1) throw new NotFoundError("Compte introuvable");
-  return db.accounts[idx];
+async function getAccountById(id) {
+  const account = await db.get("SELECT * FROM accounts WHERE id = ?", [id]);
+  if (!account) throw new NotFoundError("Compte introuvable");
+  return account;
 }
 
 function ensureActiveAccount(account) {
   if (account.status === "CLOSED") throw new ValidationError("Compte fermé");
 }
 
-function createTransaction({ accountId, relatedAccountId, type, transferType, amountCents, balanceAfterCents, description, destinationBank, beneficiaryName, gatewayName, gatewayReference }) {
+async function createTransaction({ accountId, relatedAccountId, type, transferType, amountCents, balanceAfterCents, description, destinationBank, beneficiaryName, gatewayName, gatewayReference }) {
   const tx = {
     id: randomUUID(),
-    receiptNumber: `REC-${new Date().toISOString().slice(0, 10).replace(/-/gu, "")}-${Math.floor(100000 + Math.random() * 900000)}`,
+    receiptNumber: `REC-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(100000 + Math.random() * 900000)}`,
     accountId,
     relatedAccountId,
     type,
@@ -278,19 +255,39 @@ function createTransaction({ accountId, relatedAccountId, type, transferType, am
     gatewayName,
     gatewayReference
   };
-  db.transactions.push(tx);
+
+  await db.run(`
+    INSERT INTO transactions (id, receiptNumber, accountId, relatedAccountId, type, transferType, amountCents, balanceAfterCents, createdAt, description, destinationBank, beneficiaryName, gatewayName, gatewayReference)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [tx.id, tx.receiptNumber, tx.accountId, tx.relatedAccountId, tx.type, tx.transferType, tx.amountCents, tx.balanceAfterCents, tx.createdAt, tx.description, tx.destinationBank, tx.beneficiaryName, tx.gatewayName, tx.gatewayReference]);
+
   return tx;
 }
 
 async function createClient(payload) {
   const client = createClientRecord(payload);
-  db.clients.push(client);
-  await persistDb();
-  return clientToResponse(client);
+  await db.run(`
+    INSERT INTO clients (id, firstName, lastName, address, phone, email, identityNumber, photo, kycStatus, archived, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    client.id, client.firstName, client.lastName, client.address, 
+    client.phone, client.email, client.identityNumber, client.photo, 
+    client.kycStatus, client.archived ? 1 : 0, client.createdAt, client.updatedAt
+  ]);
+  return await clientToResponse(client);
 }
 
 async function updateClient(id, payload) {
-  const client = getClientById(id);
+  const client = await getClientById(id);
+  const updates = [];
+  const params = [];
+
+  const addUpdate = (field, value) => {
+    updates.push(`${field} = ?`);
+    params.push(value);
+    client[field] = value;
+  };
+
   if (payload.firstName !== undefined) client.firstName = requireString(payload.firstName, "firstName");
   if (payload.lastName !== undefined) client.lastName = requireString(payload.lastName, "lastName");
   if (payload.address !== undefined) client.address = cleanString(payload.address, 240);
@@ -302,50 +299,62 @@ async function updateClient(id, payload) {
     if (!["PENDING", "VERIFIED", "REJECTED"].includes(payload.kycStatus)) throw new ValidationError("kycStatus invalide");
     client.kycStatus = payload.kycStatus;
   }
+
   client.updatedAt = new Date().toISOString();
-  await persistDb();
-  return clientToResponse(client);
+
+  await db.run(`
+    UPDATE clients SET 
+      firstName = ?, lastName = ?, address = ?, phone = ?, email = ?, 
+      identityNumber = ?, photo = ?, kycStatus = ?, updatedAt = ?
+    WHERE id = ?
+  `, [
+    client.firstName, client.lastName, client.address, client.phone, client.email,
+    client.identityNumber, client.photo, client.kycStatus, client.updatedAt, id
+  ]);
+
+  return await clientToResponse(client);
 }
 
 async function listClients({ q, includeArchived = false } = {}) {
   const term = cleanString(q, 120).toLowerCase();
-  return db.clients
-    .filter((client) => includeArchived || !client.archived)
-    .filter((client) => {
-      if (!term) return true;
-      return [client.firstName, client.lastName, client.email, client.phone, client.identityNumber]
-        .join(" ")
-        .toLowerCase()
-        .includes(term);
-    })
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-    .map(clientToResponse);
+  let query = "SELECT * FROM clients WHERE 1=1";
+  const params = [];
+
+  if (!includeArchived) query += " AND archived = 0";
+  if (term) {
+    query += " AND (LOWER(firstName) LIKE ? OR LOWER(lastName) LIKE ? OR LOWER(email) LIKE ?)";
+    params.push(`%${term}%`, `%${term}%`, `%${term}%`);
+  }
+
+  query += " ORDER BY createdAt DESC";
+  const clients = await db.all(query, params);
+  return Promise.all(clients.map(clientToResponse));
 }
 
 async function archiveClient(id) {
-  const client = getClientById(id);
-  client.archived = true;
-  client.updatedAt = new Date().toISOString();
-  await persistDb();
-  return clientToResponse(client);
+  const now = new Date().toISOString();
+  await db.run("UPDATE clients SET archived = 1, updatedAt = ? WHERE id = ?", [now, id]);
+  return await clientToResponse(await getClientById(id));
 }
 
 async function deleteClient(id) {
-  getClientById(id);
-  const activeAccounts = db.accounts.filter((account) => account.clientId === id && account.status !== "CLOSED");
-  if (activeAccounts.length > 0) throw new ValidationError("Fermez les comptes actifs avant de supprimer ce client");
-  db.clients = db.clients.filter((client) => client.id !== id);
-  db.accounts = db.accounts.filter((account) => account.clientId !== id);
-  db.transactions = db.transactions.filter((tx) => db.accounts.some((account) => account.id === tx.accountId));
-  await persistDb();
+  await getClientById(id);
+  const active = await db.get("SELECT id FROM accounts WHERE clientId = ? AND status != 'CLOSED'", [id]);
+  if (active) throw new ValidationError("Fermez les comptes actifs avant de supprimer ce client");
+  
+  await db.run("DELETE FROM transactions WHERE accountId IN (SELECT id FROM accounts WHERE clientId = ?)", [id]);
+  await db.run("DELETE FROM accounts WHERE clientId = ?", [id]);
+  await db.run("DELETE FROM clients WHERE id = ?", [id]);
 }
 
 async function createAccount(payload) {
   const clientId = cleanString(payload.clientId);
   let client;
   if (clientId) {
-    client = getClientById(clientId);
-  } else {
+    client = await getClientById(clientId);
+  } 
+  
+  if (!client) {
     client = await createClient({
       firstName: payload.firstName || payload.ownerName || "Client",
       lastName: payload.lastName || "Altas",
@@ -356,12 +365,12 @@ async function createAccount(payload) {
       photo: payload.photo,
       kycStatus: payload.kycStatus
     });
-    client = getClientById(client.id);
+    client = await getClientById(client.id);
   }
 
   if (client.archived) throw new ValidationError("Impossible d'ouvrir un compte pour un client archivé");
 
-  const hasActiveAccount = db.accounts.some((acc) => acc.clientId === client.id && acc.status !== "CLOSED");
+  const hasActiveAccount = await db.get("SELECT id FROM accounts WHERE clientId = ? AND status != 'CLOSED'", [client.id]);
   if (hasActiveAccount) {
     throw new ValidationError("Ce client possède déjà un compte actif. Une seule relation bancaire par client est autorisée.");
   }
@@ -380,10 +389,14 @@ async function createAccount(payload) {
     openedAt: now,
     createdAt: now
   };
-  db.accounts.push(account);
+
+  await db.run(`
+    INSERT INTO accounts (id, clientId, ownerName, accountNumber, type, status, balanceCents, openedAt, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [account.id, account.clientId, account.ownerName, account.accountNumber, account.type, account.status, account.balanceCents, account.openedAt, account.createdAt]);
 
   if (initialDepositCents > 0) {
-    createTransaction({
+    await createTransaction({
       accountId: account.id,
       type: "DEPOSIT",
       amountCents: initialDepositCents,
@@ -392,100 +405,133 @@ async function createAccount(payload) {
     });
   }
 
-  await persistDb();
-  return accountToResponse(account);
+  return await accountToResponse(account);
 }
 
 async function closeAccount(id) {
-  const account = getAccountById(id);
-  if (account.status === "CLOSED") return accountToResponse(account);
+  const account = await getAccountById(id);
+  if (account.status === "CLOSED") return await accountToResponse(account);
   if (account.balanceCents !== 0) throw new ValidationError("Le solde doit être à 0 avant fermeture");
-  account.status = "CLOSED";
-  account.closedAt = new Date().toISOString();
-  await persistDb();
-  return accountToResponse(account);
+  
+  const now = new Date().toISOString();
+  await db.run("UPDATE accounts SET status = 'CLOSED' WHERE id = ?", [id]);
+  return await accountToResponse(await getAccountById(id));
 }
 
 async function deleteAccount(id) {
-  const account = getAccountById(id);
+  const account = await getAccountById(id);
   if (account.balanceCents !== 0) throw new ValidationError("Le solde doit être à 0 avant suppression");
-  db.accounts = db.accounts.filter((item) => item.id !== id);
-  db.transactions = db.transactions.filter((tx) => tx.accountId !== id && tx.relatedAccountId !== id);
-  await persistDb();
+  
+  await db.run("DELETE FROM transactions WHERE accountId = ? OR relatedAccountId = ?", [id, id]);
+  await db.run("DELETE FROM accounts WHERE id = ?", [id]);
 }
 
 async function listAccounts({ clientId, includeClosed = false } = {}) {
-  if (clientId) getClientById(clientId);
-  return db.accounts
-    .filter((account) => !clientId || account.clientId === clientId)
-    .filter((account) => includeClosed || account.status !== "CLOSED")
-    .sort((a, b) => String(b.openedAt).localeCompare(String(a.openedAt)))
-    .map(accountToResponse);
+  let query = "SELECT * FROM accounts WHERE 1=1";
+  const params = [];
+
+  if (clientId) {
+    await getClientById(clientId);
+    query += " AND clientId = ?";
+    params.push(clientId);
+  }
+  if (!includeClosed) query += " AND status != 'CLOSED'";
+
+  query += " ORDER BY openedAt DESC";
+  const accounts = await db.all(query, params);
+  return Promise.all(accounts.map(accountToResponse));
 }
 
 async function listTransactions({ accountId, limit = 100 } = {}) {
-  if (accountId) getAccountById(accountId);
   const normalizedLimit = Number(limit);
   const safeLimit = Number.isInteger(normalizedLimit) && normalizedLimit > 0 && normalizedLimit <= 500 ? normalizedLimit : 100;
-  return db.transactions
-    .filter((tx) => !accountId || tx.accountId === accountId || tx.relatedAccountId === accountId)
-    .slice()
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-    .slice(0, safeLimit)
-    .map(transactionToResponse);
+  
+  let query = "SELECT * FROM transactions WHERE 1=1";
+  const params = [];
+
+  if (accountId) {
+    await getAccountById(accountId);
+    query += " AND (accountId = ? OR relatedAccountId = ?)";
+    params.push(accountId, accountId);
+  }
+
+  query += " ORDER BY createdAt DESC LIMIT ?";
+  params.push(safeLimit);
+  
+  const txs = await db.all(query, params);
+  return txs.map(transactionToResponse);
 }
 
 async function getSummary() {
-  const activeAccounts = db.accounts.filter((account) => account.status !== "CLOSED");
-  const totalBalanceCents = activeAccounts.reduce((sum, account) => sum + Number(account.balanceCents || 0), 0);
+  const clientCount = (await db.get("SELECT COUNT(*) as count FROM clients WHERE archived = 0")).count;
+  const archivedCount = (await db.get("SELECT COUNT(*) as count FROM clients WHERE archived = 1")).count;
+  const accountCount = (await db.get("SELECT COUNT(*) as count FROM accounts WHERE status != 'CLOSED'")).count;
+  const closedCount = (await db.get("SELECT COUNT(*) as count FROM accounts WHERE status = 'CLOSED'")).count;
+  const txCount = (await db.get("SELECT COUNT(*) as count FROM transactions")).count;
+  const totalBalance = (await db.get("SELECT SUM(balanceCents) as total FROM accounts WHERE status != 'CLOSED'")).total || 0;
+
   return {
-    clientCount: db.clients.filter((client) => !client.archived).length,
-    archivedClientCount: db.clients.filter((client) => client.archived).length,
-    accountCount: activeAccounts.length,
-    closedAccountCount: db.accounts.length - activeAccounts.length,
-    transactionCount: db.transactions.length,
-    totalBalance: centsToMoney(totalBalanceCents)
+    clientCount,
+    archivedClientCount: archivedCount,
+    accountCount,
+    closedAccountCount: closedCount,
+    transactionCount: txCount,
+    totalBalance: centsToMoney(totalBalance)
   };
 }
 
 async function deposit(accountId, amount, description = "Dépôt espèces") {
   const amountCents = parseMoneyToCents(amount, { fieldName: "amount" });
-  const account = getAccountById(accountId);
+  const account = await getAccountById(accountId);
   ensureActiveAccount(account);
   account.balanceCents += amountCents;
-  const transaction = createTransaction({
+  
+  await db.run("UPDATE accounts SET balanceCents = ? WHERE id = ?", [account.balanceCents, accountId]);
+  
+  const transaction = await createTransaction({
     accountId,
     type: "DEPOSIT",
     amountCents,
     balanceAfterCents: account.balanceCents,
     description: cleanString(description, 140)
   });
-  await persistDb();
-  return { account: accountToResponse(account), transaction: transactionToResponse(transaction), receipt: receiptToResponse(transaction) };
+
+  return { 
+    account: await accountToResponse(account), 
+    transaction: transactionToResponse(transaction), 
+    receipt: await receiptToResponse(transaction) 
+  };
 }
 
 async function withdraw(accountId, amount, description = "Retrait espèces") {
   const amountCents = parseMoneyToCents(amount, { fieldName: "amount" });
-  const account = getAccountById(accountId);
+  const account = await getAccountById(accountId);
   ensureActiveAccount(account);
   if (account.balanceCents < amountCents) throw new InsufficientFundsError("Fonds insuffisants");
   account.balanceCents -= amountCents;
-  const transaction = createTransaction({
+
+  await db.run("UPDATE accounts SET balanceCents = ? WHERE id = ?", [account.balanceCents, accountId]);
+
+  const transaction = await createTransaction({
     accountId,
     type: "WITHDRAWAL",
     amountCents,
     balanceAfterCents: account.balanceCents,
     description: cleanString(description, 140)
   });
-  await persistDb();
-  return { account: accountToResponse(account), transaction: transactionToResponse(transaction), receipt: receiptToResponse(transaction) };
+
+  return { 
+    account: await accountToResponse(account), 
+    transaction: transactionToResponse(transaction), 
+    receipt: await receiptToResponse(transaction) 
+  };
 }
 
 async function transfer(payload) {
   const fromId = requireString(payload.fromAccountId, "fromAccountId");
   const transferType = TRANSFER_TYPES.has(payload.transferType) ? payload.transferType : "INTERNAL";
   const amountCents = parseMoneyToCents(payload.amount, { fieldName: "amount" });
-  const fromAccount = getAccountById(fromId);
+  const fromAccount = await getAccountById(fromId);
   ensureActiveAccount(fromAccount);
   if (fromAccount.balanceCents < amountCents) throw new InsufficientFundsError("Fonds insuffisants");
 
@@ -495,10 +541,14 @@ async function transfer(payload) {
   if (transferType === "INTERNAL") {
     const toId = requireString(payload.toAccountId, "toAccountId");
     if (fromId === toId) throw new ValidationError("Les comptes source et destinataire doivent être différents");
-    const toAccount = getAccountById(toId);
+    const toAccount = await getAccountById(toId);
     ensureActiveAccount(toAccount);
     toAccount.balanceCents += amountCents;
-    const withdrawal = createTransaction({
+
+    await db.run("UPDATE accounts SET balanceCents = ? WHERE id = ?", [fromAccount.balanceCents, fromId]);
+    await db.run("UPDATE accounts SET balanceCents = ? WHERE id = ?", [toAccount.balanceCents, toId]);
+
+    const withdrawal = await createTransaction({
       accountId: fromId,
       relatedAccountId: toId,
       type: "TRANSFER_OUT",
@@ -507,7 +557,7 @@ async function transfer(payload) {
       balanceAfterCents: fromAccount.balanceCents,
       description
     });
-    const depositTx = createTransaction({
+    const depositTx = await createTransaction({
       accountId: toId,
       relatedAccountId: fromId,
       type: "TRANSFER_IN",
@@ -516,16 +566,18 @@ async function transfer(payload) {
       balanceAfterCents: toAccount.balanceCents,
       description
     });
-    await persistDb();
+
     return {
-      fromAccount: accountToResponse(fromAccount),
-      toAccount: accountToResponse(toAccount),
+      fromAccount: await accountToResponse(fromAccount),
+      toAccount: await accountToResponse(toAccount),
       transactions: [transactionToResponse(withdrawal), transactionToResponse(depositTx)],
-      receipt: receiptToResponse(withdrawal)
+      receipt: await receiptToResponse(withdrawal)
     };
   }
 
-  const transaction = createTransaction({
+  await db.run("UPDATE accounts SET balanceCents = ? WHERE id = ?", [fromAccount.balanceCents, fromId]);
+
+  const transaction = await createTransaction({
     accountId: fromId,
     type: transferType === "PAYMENT_GATEWAY" ? "GATEWAY_TRANSFER_OUT" : "EXTERNAL_TRANSFER_OUT",
     transferType,
@@ -537,18 +589,18 @@ async function transfer(payload) {
     gatewayName: cleanString(payload.gatewayName, 120),
     gatewayReference: cleanString(payload.gatewayReference, 120)
   });
-  await persistDb();
+
   return {
-    fromAccount: accountToResponse(fromAccount),
+    fromAccount: await accountToResponse(fromAccount),
     transactions: [transactionToResponse(transaction)],
-    receipt: receiptToResponse(transaction)
+    receipt: await receiptToResponse(transaction)
   };
 }
 
-function getReceiptByTransactionId(id) {
-  const transaction = db.transactions.find((tx) => tx.id === id || tx.receiptNumber === id);
+async function getReceiptByTransactionId(id) {
+  const transaction = await db.get("SELECT * FROM transactions WHERE id = ? OR receiptNumber = ?", [id, id]);
   if (!transaction) throw new NotFoundError("Reçu introuvable");
-  return receiptToResponse(transaction);
+  return await receiptToResponse(transaction);
 }
 
 module.exports = {
@@ -564,6 +616,7 @@ module.exports = {
   updateClient,
   listClients,
   getClientById,
+  getClientByEmail,
   archiveClient,
   deleteClient,
   createAccount,

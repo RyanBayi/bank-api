@@ -10,6 +10,7 @@ const {
   updateClient,
   listClients,
   getClientById,
+  getClientByEmail,
   archiveClient,
   deleteClient,
   createAccount,
@@ -30,8 +31,8 @@ const {
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = String(process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1"));
-const OPENAPI_FILE = path.join(process.cwd(), "openapi.json");
-const PUBLIC_DIR = path.join(process.cwd(), "public");
+const OPENAPI_FILE = path.join(__dirname, "..", "openapi.json");
+const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -207,6 +208,31 @@ async function main() {
       }
 
       // API routes
+      if (pathname === "/api/login" && method === "POST") {
+        const body = await readJsonBody(req);
+        const email = String(body.email || "").trim();
+        const username = String(body.username || "").trim();
+        const password = String(body.password || "").trim();
+
+        if (username === "admin" && password === "admin") {
+          return sendJson(res, 200, { role: "admin" });
+        }
+
+        if (email) {
+          try {
+            const client = await getClientByEmail(email);
+            return sendJson(res, 200, { role: "client", client: await clientToResponse(client) });
+          } catch (err) {
+            if (err instanceof NotFoundError) {
+              return sendJson(res, 404, { error: "NOT_FOUND", message: "Client introuvable ou archivé" });
+            }
+            throw err;
+          }
+        }
+
+        return sendJson(res, 400, { error: "VALIDATION_ERROR", message: "Email ou identifiants incorrects" });
+      }
+
       if (pathname === "/api/clients" && method === "GET") {
         const clients = await listClients({
           q: url.searchParams.get("q"),
@@ -229,7 +255,7 @@ async function main() {
 
       const clientById = matchPath(/^\/api\/clients\/(?<id>[^/]+)$/u, pathname);
       if (clientById && method === "GET") {
-        return sendJson(res, 200, clientToResponse(getClientById(clientById.id)));
+        return sendJson(res, 200, await clientToResponse(await getClientById(clientById.id)));
       }
 
       if (clientById && method === "PUT") {
@@ -279,8 +305,8 @@ async function main() {
 
       const accountById = matchPath(/^\/api\/accounts\/(?<id>[^/]+)$/u, pathname);
       if (accountById && method === "GET") {
-        const account = getAccountById(accountById.id);
-        return sendJson(res, 200, accountToResponse(account));
+        const account = await getAccountById(accountById.id);
+        return sendJson(res, 200, await accountToResponse(account));
       }
 
       if (accountById && method === "DELETE") {
@@ -323,7 +349,7 @@ async function main() {
 
       const receiptRoute = matchPath(/^\/api\/receipts\/(?<id>[^/]+)$/u, pathname);
       if (receiptRoute && method === "GET") {
-        const receipt = getReceiptByTransactionId(receiptRoute.id);
+        const receipt = await getReceiptByTransactionId(receiptRoute.id);
         return sendJson(res, 200, receipt);
       }
 

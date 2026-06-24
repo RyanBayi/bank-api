@@ -3,7 +3,8 @@ const state = {
   accounts: [],
   transactions: [],
   summary: { clientCount: 0, accountCount: 0, transactionCount: 0, totalBalance: 0 },
-  lastReceipt: null
+  lastReceipt: null,
+  user: null
 };
 
 const moneyFormatter = new Intl.NumberFormat("fr-CM", { style: "currency", currency: "XAF", maximumFractionDigits: 0 });
@@ -35,7 +36,32 @@ const selectors = {
   themeToggleLabel: document.querySelector("#themeToggleLabel"),
   toast: document.querySelector("#toast"),
   tabButtons: document.querySelectorAll(".tabButton"),
-  tabPanels: document.querySelectorAll(".tabPanel")
+  tabPanels: document.querySelectorAll(".tabPanel"),
+  
+  loginScreen: document.querySelector("#loginScreen"),
+  adminView: document.querySelector("#adminView"),
+  clientView: document.querySelector("#clientView"),
+  appLayout: document.querySelector(".layout"),
+  appTopbar: document.querySelector(".topbar"),
+  logoutButton: document.querySelector("#logoutButton"),
+  userIndicator: document.querySelector("#userIndicator"),
+  
+  // Login selectors
+  loginTabClientBtn: document.querySelector("#loginTabClientBtn"),
+  loginTabAdminBtn: document.querySelector("#loginTabAdminBtn"),
+  clientLoginForm: document.querySelector("#clientLoginForm"),
+  adminLoginForm: document.querySelector("#adminLoginForm"),
+  clientEmailInput: document.querySelector("#clientEmail"),
+  adminUsernameInput: document.querySelector("#adminUsername"),
+  adminPasswordInput: document.querySelector("#adminPassword"),
+
+
+  // Client dashboard selectors
+  clientProfileBox: document.querySelector("#clientProfileBox"),
+  clientAccountSelect: document.querySelector("#clientAccountSelect"),
+  clientAccountsList: document.querySelector("#clientAccountsList"),
+  clientTransactionsList: document.querySelector("#clientTransactionsList"),
+  clientOperationForm: document.querySelector("#clientOperationForm")
 };
 
 const accountTypes = {
@@ -62,7 +88,11 @@ function applyTheme(theme) {
 function loadThemePreference() {
   const savedTheme = localStorage.getItem("bankTheme");
   if (savedTheme === "dark" || savedTheme === "light") return savedTheme;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  } catch (e) {
+    return "light";
+  }
 }
 
 function formatMoney(value) {
@@ -601,5 +631,298 @@ selectors.themeToggle.addEventListener("click", () => {
   applyTheme(nextTheme);
 });
 
-applyTheme(loadThemePreference());
-loadDashboard().catch((err) => showToast(err.message, true));
+function showLoginView() {
+  state.user = null;
+  localStorage.removeItem("bankUser");
+  if (selectors.loginScreen) selectors.loginScreen.classList.remove("hidden");
+  if (selectors.appTopbar) selectors.appTopbar.classList.add("hidden");
+  if (selectors.appLayout) selectors.appLayout.classList.add("hidden");
+  if (selectors.logoutButton) selectors.logoutButton.classList.add("hidden");
+  if (selectors.userIndicator) selectors.userIndicator.classList.add("hidden");
+  if (selectors.adminView) selectors.adminView.classList.add("hidden");
+  if (selectors.clientView) selectors.clientView.classList.add("hidden");
+}
+
+function login(session) {
+  state.user = session;
+  localStorage.setItem("bankUser", JSON.stringify(session));
+  showToast("Connexion réussie");
+  if (session.role === "admin") {
+    showAdminView();
+  } else if (session.role === "client") {
+    showClientView();
+  }
+}
+
+function logout() {
+  state.user = null;
+  localStorage.removeItem("bankUser");
+  showToast("Déconnecté");
+  showLoginView();
+}
+
+function showAdminView() {
+  if (selectors.loginScreen) selectors.loginScreen.classList.add("hidden");
+  if (selectors.appTopbar) selectors.appTopbar.classList.remove("hidden");
+  if (selectors.appLayout) selectors.appLayout.classList.remove("hidden");
+  if (selectors.adminView) selectors.adminView.classList.remove("hidden");
+  if (selectors.clientView) selectors.clientView.classList.add("hidden");
+  if (selectors.logoutButton) selectors.logoutButton.classList.remove("hidden");
+  if (selectors.userIndicator) {
+    selectors.userIndicator.classList.remove("hidden");
+    selectors.userIndicator.textContent = "Administrateur";
+  }
+  
+  loadDashboard().catch((err) => showToast(err.message, true));
+}
+
+async function showClientView() {
+  if (selectors.loginScreen) selectors.loginScreen.classList.add("hidden");
+  if (selectors.appTopbar) selectors.appTopbar.classList.remove("hidden");
+  if (selectors.appLayout) selectors.appLayout.classList.remove("hidden");
+  if (selectors.adminView) selectors.adminView.classList.add("hidden");
+  if (selectors.clientView) selectors.clientView.classList.remove("hidden");
+  if (selectors.logoutButton) selectors.logoutButton.classList.remove("hidden");
+  if (selectors.userIndicator) {
+    selectors.userIndicator.classList.remove("hidden");
+    selectors.userIndicator.textContent = state.user.client.fullName;
+  }
+  
+  await loadClientDashboard();
+}
+
+async function loadClientDashboard() {
+  try {
+    const clientId = state.user.client.id;
+    // Charger le profil frais
+    const client = await requestJson(`/api/clients/${clientId}`);
+    state.user.client = client;
+    
+    // Remplir le profil box
+    if (selectors.clientProfileBox) {
+      const avatarSrc = client.photo || "";
+      selectors.clientProfileBox.innerHTML = `
+        ${client.photo ? `<img src="${avatarSrc}" alt="Avatar" class="profileAvatar" />` : '<div class="profileAvatar placeholder"></div>'}
+        <div class="profileDetails">
+          <h3>${client.fullName}</h3>
+          <p><strong>Email:</strong> ${client.email || 'Non renseigné'}</p>
+          <p><strong>Téléphone:</strong> ${client.phone || 'Non renseigné'}</p>
+          <p><strong>Adresse:</strong> ${client.address || 'Non renseigné'}</p>
+          <p><strong>N° Pièce:</strong> ${client.identityNumber || 'Non renseigné'}</p>
+          <span class="kycStatusBadge kyc-${client.kycStatus}">${kycLabels[client.kycStatus] || client.kycStatus}</span>
+        </div>
+      `;
+    }
+
+    // Charger les comptes
+    const accounts = await requestJson(`/api/clients/${clientId}/accounts`);
+    
+    // Remplir le select de compte
+    if (selectors.clientAccountSelect) {
+      selectors.clientAccountSelect.innerHTML = "";
+      const activeAccounts = accounts.filter(a => a.status !== "CLOSED");
+      if (activeAccounts.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Aucun compte actif";
+        selectors.clientAccountSelect.appendChild(opt);
+      } else {
+        activeAccounts.forEach(a => {
+          const opt = document.createElement("option");
+          opt.value = a.id;
+          opt.textContent = `${accountTypes[a.type] || a.type} (${a.accountNumber}) - ${formatMoney(a.balance)}`;
+          selectors.clientAccountSelect.appendChild(opt);
+        });
+      }
+    }
+
+    // Remplir la liste des comptes
+    if (selectors.clientAccountsList) {
+      selectors.clientAccountsList.innerHTML = "";
+      if (accounts.length === 0) {
+        selectors.clientAccountsList.innerHTML = `<div class="emptyState">Aucun compte bancaire.</div>`;
+      } else {
+        accounts.forEach(a => {
+          const isClosed = a.status === "CLOSED";
+          const card = document.createElement("div");
+          card.className = `accountCard ${isClosed ? 'isClosed' : ''}`;
+          card.innerHTML = `
+            <div class="accountHeader">
+              <div>
+                <h3>${accountTypes[a.type] || a.type}</h3>
+                <p class="accountNumber">${a.accountNumber}</p>
+              </div>
+              <span class="badge ${isClosed ? 'badge-CLOSED' : 'badge-ACTIVE'}">${isClosed ? 'Fermé' : 'Actif'}</span>
+            </div>
+            <div class="accountBalance">
+              <span>Solde</span>
+              <strong>${formatMoney(a.balance)}</strong>
+            </div>
+          `;
+          selectors.clientAccountsList.appendChild(card);
+        });
+      }
+    }
+
+    // Charger les transactions de tous ses comptes
+    if (selectors.clientTransactionsList) {
+      selectors.clientTransactionsList.innerHTML = "";
+      let allTransactions = [];
+      for (const account of accounts) {
+        const txs = await requestJson(`/api/accounts/${account.id}/transactions?limit=10`);
+        allTransactions = allTransactions.concat(txs);
+      }
+      
+      // Trier par date décroissante
+      allTransactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      // Prendre les 10 plus récentes
+      const recentTxs = allTransactions.slice(0, 10);
+      
+      if (recentTxs.length === 0) {
+        selectors.clientTransactionsList.innerHTML = `<div class="emptyState">Aucune transaction récente.</div>`;
+      } else {
+        recentTxs.forEach(t => {
+          const isDeposit = t.type === "DEPOSIT" || (t.type === "TRANSFER_IN" || t.type === "EXTERNAL_TRANSFER_IN");
+          const item = document.createElement("div");
+          item.className = "transactionItem";
+          item.innerHTML = `
+            <div>
+              <h3>${t.description || (isDeposit ? 'Dépôt' : 'Retrait')}</h3>
+              <p class="transactionMeta">${formatDate(t.createdAt)}</p>
+            </div>
+            <strong class="transactionAmount ${isDeposit ? 'isPositive' : 'isNegative'}">
+              ${isDeposit ? '+' : '-'}&nbsp;${formatMoney(t.amount)}
+            </strong>
+          `;
+          selectors.clientTransactionsList.appendChild(item);
+        });
+      }
+    }
+
+  } catch (err) {
+    showToast("Erreur lors de l'actualisation du dashboard: " + err.message, true);
+  }
+}
+
+async function initApp() {
+  applyTheme(loadThemePreference());
+  
+  // Gestion du basculement entre les onglets Client et Admin
+  if (selectors.loginTabClientBtn && selectors.loginTabAdminBtn) {
+    selectors.loginTabClientBtn.addEventListener("click", () => {
+      selectors.loginTabClientBtn.classList.add("active");
+      selectors.loginTabAdminBtn.classList.remove("active");
+      selectors.clientLoginForm.classList.remove("hidden");
+      selectors.adminLoginForm.classList.add("hidden");
+    });
+
+    selectors.loginTabAdminBtn.addEventListener("click", () => {
+      selectors.loginTabAdminBtn.classList.add("active");
+      selectors.loginTabClientBtn.classList.remove("active");
+      selectors.adminLoginForm.classList.remove("hidden");
+      selectors.clientLoginForm.classList.add("hidden");
+    });
+  }
+
+  // Submit handlers pour la connexion
+  if (selectors.clientLoginForm) {
+    selectors.clientLoginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = selectors.clientEmailInput ? selectors.clientEmailInput.value : "";
+      try {
+        const res = await requestJson("/api/login", {
+          method: "POST",
+          body: JSON.stringify({ email })
+        });
+        login(res);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  }
+  
+  if (selectors.adminLoginForm) {
+    selectors.adminLoginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = selectors.adminUsernameInput ? selectors.adminUsernameInput.value : "";
+      const password = selectors.adminPasswordInput ? selectors.adminPasswordInput.value : "";
+      try {
+        const res = await requestJson("/api/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password })
+        });
+        login(res);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  }
+
+  // Déconnexion
+  if (selectors.logoutButton) {
+    selectors.logoutButton.addEventListener("click", logout);
+  }
+
+  // Opération Client
+  if (selectors.clientOperationForm) {
+    selectors.clientOperationForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const accountId = selectors.clientAccountSelect ? selectors.clientAccountSelect.value : "";
+      if (!accountId) {
+        showToast("Aucun compte sélectionné", true);
+        return;
+      }
+      const payload = getFormPayload(selectors.clientOperationForm);
+      const type = payload.clientOperationType; // deposit / withdraw
+      const amount = payload.amount;
+      const description = payload.description;
+      
+      try {
+        await withLoading(selectors.clientOperationForm, async () => {
+          if (type === "deposit") {
+            await requestJson(`/api/accounts/${accountId}/deposit`, {
+              method: "POST",
+              body: JSON.stringify({ amount, description })
+            });
+          } else {
+            await requestJson(`/api/accounts/${accountId}/withdraw`, {
+              method: "POST",
+              body: JSON.stringify({ amount, description })
+            });
+          }
+        });
+        showToast(type === "deposit" ? "Dépôt effectué" : "Retrait effectué");
+        selectors.clientOperationForm.reset();
+        await loadClientDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  }
+
+  // Vérifier la session existante
+  const savedUser = localStorage.getItem("bankUser");
+  if (savedUser) {
+    try {
+      state.user = JSON.parse(savedUser);
+      if (state.user.role === "admin") {
+        showAdminView();
+      } else if (state.user.role === "client") {
+        showClientView();
+      } else {
+        showLoginView();
+      }
+    } catch (e) {
+      showLoginView();
+    }
+  } else {
+    showLoginView();
+  }
+}
+
+// Exposer les fonctions globales pour les tests
+window.formatMoney = formatMoney;
+window.state = state;
+
+initApp();

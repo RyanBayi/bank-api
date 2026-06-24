@@ -911,3 +911,237 @@ button.isLoading::before {
     animation: none !important;
   }
 }
+
+/* ── LOGIN SCREEN ───────────────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+.loginScreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.loginCard {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 40px;
+  animation: fadeLift 0.5s ease both;
+}
+
+.loginHeader {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.loginHeader h1 {
+  margin-top: 10px;
+}
+
+.loginTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: var(--surface-2);
+  padding: 4px;
+  border-radius: 100px;
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+}
+
+.loginTabBtn {
+  background: transparent;
+  border: none;
+  border-radius: 100px;
+  padding: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.loginTabBtn.active {
+  background: var(--surface);
+  color: var(--copper);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line);
+}
+
+.loginForm {
+  display: grid;
+  gap: 20px;
+}
+
+.formGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.formGroup label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.formGroup input {
+  padding: 12px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+.formGroup input:focus {
+  outline: none;
+  border-color: var(--copper);
+  box-shadow: 0 0 0 3px var(--copper-glow);
+}
+
+.loginSubmitBtn {
+  background: var(--copper);
+  color: #fff;
+  border: none;
+  border-radius: 100px;
+  padding: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow-sm);
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  margin-top: 8px;
+}
+
+.loginSubmitBtn:hover {
+  background: var(--copper-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.loginDemoBox {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+}
+
+.loginDemoBox h3 {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.demoAccountsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.demoAccountItem {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-2);
+  transition: all 0.15s ease;
+}
+
+.demoAccountItem:hover {
+  border-color: var(--copper);
+  color: var(--copper);
+  background: var(--copper-glow);
+}
+
+/* ── CLIENT INDICATOR & TOPBAR ACTIONS ──────────────── */
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.userIndicator {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  padding-right: 16px;
+}
+
+/* ── CLIENT PROFILE CARD ────────────────────────────── */
+.clientProfileBox {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.profileAvatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--copper);
+  background: var(--surface);
+}
+
+.profileDetails h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.profileDetails p {
+  font-size: 0.84rem;
+  color: var(--muted);
+  margin: 2px 0;
+}
+
+.kycStatusBadge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 100px;
+  margin-top: 6px;
+}
+
+.kyc-VERIFIED {
+  background: var(--good-bg);
+  color: var(--good);
+  border: 1px solid var(--good);
+}
+
+.kyc-PENDING {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.kyc-REJECTED {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}

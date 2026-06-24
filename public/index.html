@@ -48,19 +48,60 @@
     </style>
   </head>
   <body>
-    <header class="topbar">
+    <div id="loginScreen" class="loginScreen">
+      <div class="loginCard">
+        <div class="loginHeader">
+          <p class="eyebrow">Connexion sécurisée</p>
+          <h1>Altas Bank</h1>
+        </div>
+        
+        <div class="loginTabs">
+          <button id="loginTabClientBtn" class="loginTabBtn active" type="button">Espace Client</button>
+          <button id="loginTabAdminBtn" class="loginTabBtn" type="button">Administrateur</button>
+        </div>
+
+        <!-- Formulaire Client -->
+        <form id="clientLoginForm" class="loginForm">
+          <div class="formGroup">
+            <label for="clientEmail">Adresse Email</label>
+            <input type="email" id="clientEmail" name="email" placeholder="nom@exemple.com" required />
+          </div>
+          <button type="submit" class="loginSubmitBtn">Se connecter</button>
+        </form>
+
+        <!-- Formulaire Admin -->
+        <form id="adminLoginForm" class="loginForm hidden">
+          <div class="formGroup">
+            <label for="adminUsername">Identifiant</label>
+            <input type="text" id="adminUsername" name="username" placeholder="admin" required autocomplete="username" />
+          </div>
+          <div class="formGroup">
+            <label for="adminPassword">Mot de passe</label>
+            <input type="password" id="adminPassword" name="password" placeholder="••••••••" required autocomplete="current-password" />
+          </div>
+          <button type="submit" class="loginSubmitBtn">Se connecter en tant qu'Admin</button>
+        </form>
+      </div>
+    </div>
+
+    <header class="topbar hidden">
       <div>
         <p class="eyebrow">Application de gestion bancaire</p>
         <h1>Altas</h1>
       </div>
-      <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
-        <span class="themeIcon" aria-hidden="true">☾</span>
-        <span id="themeToggleLabel">Mode nuit</span>
-      </button>
+      <div class="topbarActions">
+        <span id="userIndicator" class="userIndicator"></span>
+        <button id="logoutButton" class="ghostButton" type="button">Se déconnecter</button>
+        <button id="themeToggle" class="themeToggle" type="button" aria-pressed="false">
+          <span class="themeIcon" aria-hidden="true">☾</span>
+          <span id="themeToggleLabel">Mode nuit</span>
+        </button>
+      </div>
     </header>
 
-    <main class="layout">
-      <section class="stats" aria-label="Résumé">
+    <main class="layout hidden">
+      <div id="adminView" class="adminView">
+        <section class="stats" aria-label="Résumé">
         <article class="stat">
           <span>Clients</span>
           <strong id="clientCount">0</strong>
@@ -244,6 +285,58 @@
           </div>
         </div>
       </section>
+      </div>
+
+      <div id="clientView" class="clientView hidden">
+        <!-- Dashboard client en deux colonnes -->
+        <div class="workbench twoColumns">
+          
+          <!-- Colonne Gauche : Profil et Actions -->
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Mon Profil</h2>
+            </div>
+            <div id="clientProfileBox" class="clientProfileBox">
+              <!-- Rempli dynamiquement -->
+            </div>
+            
+            <div class="panelHeader" style="margin-top: 2rem;">
+              <h2>Faire un dépôt ou retrait</h2>
+            </div>
+            <form id="clientOperationForm" class="form">
+              <label>
+                Choisir un compte
+                <select name="accountId" id="clientAccountSelect" required></select>
+              </label>
+              <div class="segmented" role="radiogroup" aria-label="Type d'opération">
+                <label><input type="radio" name="clientOperationType" value="deposit" checked /> Dépôt</label>
+                <label><input type="radio" name="clientOperationType" value="withdraw" /> Retrait</label>
+              </div>
+              <label>Montant <input name="amount" inputmode="decimal" placeholder="25000" required /></label>
+              <label>Libellé <input name="description" placeholder="Ex: versement personnel" /></label>
+              <button type="submit">Valider l'opération</button>
+            </form>
+          </div>
+
+          <!-- Colonne Droite : Comptes et Transactions -->
+          <div class="panel">
+            <div class="panelHeader">
+              <h2>Mes Comptes</h2>
+            </div>
+            <div id="clientAccountsList" class="accountsList">
+              <!-- Rempli dynamiquement -->
+            </div>
+            
+            <div class="panelHeader" style="margin-top: 2rem;">
+              <h2>Mes dernières transactions</h2>
+            </div>
+            <div id="clientTransactionsList" class="transactionsList">
+              <!-- Rempli dynamiquement -->
+            </div>
+          </div>
+          
+        </div>
+      </div>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
