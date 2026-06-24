@@ -1,5 +1,5 @@
 const path = require("path");
-const sqlite3 = require("sqlite3");
+const Database = require("better-sqlite3");
 const { open } = require("sqlite");
 const { randomUUID } = require("crypto");
 
@@ -41,7 +41,7 @@ let db;
 async function loadDb() {
   db = await open({
     filename: dbFile.endsWith(".json") ? dbFile.replace(".json", ".db") : dbFile,
-    driver: sqlite3.Database
+    driver: Database
   });
 
   await db.exec(`
