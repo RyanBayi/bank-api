@@ -1,6 +1,5 @@
 const path = require("path");
 const Database = require("better-sqlite3");
-const { open } = require("sqlite");
 const { randomUUID } = require("crypto");
 
 const DEFAULT_DATA_DIR = path.join(__dirname, "..", "data");
@@ -38,11 +37,26 @@ class InsufficientFundsError extends Error {
 
 let db;
 
+function createDbConnection(filename) {
+  const connection = new Database(filename);
+  return {
+    async exec(sql) {
+      connection.exec(sql);
+    },
+    async run(sql, params = []) {
+      return connection.prepare(sql).run(...(Array.isArray(params) ? params : []));
+    },
+    async get(sql, params = []) {
+      return connection.prepare(sql).get(...(Array.isArray(params) ? params : []));
+    },
+    async all(sql, params = []) {
+      return connection.prepare(sql).all(...(Array.isArray(params) ? params : []));
+    }
+  };
+}
+
 async function loadDb() {
-  db = await open({
-    filename: dbFile.endsWith(".json") ? dbFile.replace(".json", ".db") : dbFile,
-    driver: Database
-  });
+  db = createDbConnection(dbFile.endsWith(".json") ? dbFile.replace(".json", ".db") : dbFile);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS clients (
